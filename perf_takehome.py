@@ -50,10 +50,14 @@ class KernelBuilder:
     def debug_info(self):
         return DebugInfo(scratch_map=self.scratch_debug)
 
-    def build(self, slots: list[tuple[Engine, tuple]], vliw: bool = False):
+    def build(self, slots: list[tuple[Engine, tuple] | dict[str, list[tuple]]], vliw: bool = False):
         # Simple slot packing that just uses one slot per instruction bundle
         instrs = []
-        for engine, slot in slots:
+        for slot_entry in slots:
+            if isinstance(slot_entry, dict):
+                instrs.append(slot_entry)
+                continue
+            engine, slot = slot_entry
             instrs.append({engine: [slot]})
         return instrs
 
@@ -132,6 +136,8 @@ class KernelBuilder:
         tmp_val = self.alloc_scratch("tmp_val")
         tmp_node_val = self.alloc_scratch("tmp_node_val")
         tmp_addr = self.alloc_scratch("tmp_addr")
+        tmp_addr_idx = self.alloc_scratch("tmp_addr_idx")
+        tmp_addr_val = self.alloc_scratch("tmp_addr_val")
 
         vec_idx = self.alloc_scratch("vec_idx", length=VLEN)
         vec_val = self.alloc_scratch("vec_val", length=VLEN)
@@ -164,30 +170,37 @@ class KernelBuilder:
             for batch_base in range(0, vector_end, VLEN):
                 i_const = self.scratch_const(batch_base)
                 # idx = mem[inp_indices_p + i : i + VLEN]
-                body.append(("alu", ("+", tmp_addr, self.scratch["inp_indices_p"], i_const))) # tmp_addr = inp_indices_p + i
-                body.append(("load", ("vload", vec_idx, tmp_addr))) # load tmp_addr into vec_idx
                 body.append(
-                    (
-                        "debug",
-                        (
-                            "vcompare",
-                            vec_idx,
-                            [(round, batch_base + vi, "idx") for vi in range(VLEN)],
-                        ),
-                    )
+                    {
+                        "alu": [
+                            ("+", tmp_addr_idx, self.scratch["inp_indices_p"], i_const),
+                            ("+", tmp_addr_val, self.scratch["inp_values_p"], i_const),
+                        ]
+                    }
                 )
-                # val = mem[inp_values_p + i : i + VLEN]
-                body.append(("alu", ("+", tmp_addr, self.scratch["inp_values_p"], i_const))) # tmp_addr = inp_values_p + i
-                body.append(("load", ("vload", vec_val, tmp_addr))) # load tmp_addr into vec_val
                 body.append(
-                    (
-                        "debug",
-                        (
-                            "vcompare",
-                            vec_val,
-                            [(round, batch_base + vi, "val") for vi in range(VLEN)],
-                        ),
-                    )
+                    {
+                        "load": [
+                            ("vload", vec_idx, tmp_addr_idx),
+                            ("vload", vec_val, tmp_addr_val),
+                        ]
+                    }
+                )
+                body.append(
+                    {
+                        "debug": [
+                            (
+                                "vcompare",
+                                vec_idx,
+                                [(round, batch_base + vi, "idx") for vi in range(VLEN)],
+                            ),
+                            (
+                                "vcompare",
+                                vec_val,
+                                [(round, batch_base + vi, "val") for vi in range(VLEN)],
+                            ),
+                        ]
+                    }
                 )
                 # node_val = mem[forest_values_p + idx]
                 body.append(("valu", ("+", vec_addr, vec_forest_base, vec_idx))) # vec_addr = vec_forest_base + vec_idx
