@@ -226,14 +226,24 @@ class KernelBuilder:
                 # val = myhash(val ^ node_val), this is so we know which branch of the tree to take.
                 body.append(("valu", ("^", vec_val, vec_val, vec_node_val)))
                 for op1, val1, op2, op3, val3 in HASH_STAGES:
-                    body.append(("valu", (op1, vec_tmp1, vec_val, get_vec_const(val1))))
-                    body.append(("valu", (op3, vec_tmp2, vec_val, get_vec_const(val3))))
+                    body.append(
+                        {
+                            "valu": [
+                                (op1, vec_tmp1, vec_val, get_vec_const(val1)),
+                                (op3, vec_tmp2, vec_val, get_vec_const(val3)),
+                            ]
+                        }
+                    )
                     body.append(("valu", (op2, vec_val, vec_tmp1, vec_tmp2)))
                 # idx = 2*idx + (1 if val % 2 == 0 else 2)
                 body.append(("valu", ("%", vec_tmp1, vec_val, vec_two)))
                 body.append(("valu", ("==", vec_tmp1, vec_tmp1, vec_zero)))
-                body.append(("flow", ("vselect", vec_tmp3, vec_tmp1, vec_one, vec_two)))
-                body.append(("valu", ("*", vec_idx, vec_idx, vec_two)))
+                body.append(
+                    {
+                        "flow": [("vselect", vec_tmp3, vec_tmp1, vec_one, vec_two)],
+                        "valu": [("*", vec_idx, vec_idx, vec_two)],
+                    }
+                )
                 body.append(("valu", ("+", vec_idx, vec_idx, vec_tmp3)))
                 # idx = 0 if idx >= n_nodes else idx
                 body.append(("valu", ("<", vec_tmp1, vec_idx, vec_n_nodes)))
