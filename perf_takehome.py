@@ -204,8 +204,15 @@ class KernelBuilder:
                 )
                 # node_val = mem[forest_values_p + idx]
                 body.append(("valu", ("+", vec_addr, vec_forest_base, vec_idx))) # vec_addr = vec_forest_base + vec_idx
-                for vi in range(VLEN):
-                    body.append(("load", ("load_offset", vec_node_val, vec_addr, vi)))
+                for vi in range(0, VLEN, 2):
+                    body.append(
+                        {
+                            "load": [
+                                ("load_offset", vec_node_val, vec_addr, vi),
+                                ("load_offset", vec_node_val, vec_addr, vi + 1),
+                            ]
+                        }
+                    )
                 body.append(
                     (
                         "debug",
@@ -232,11 +239,23 @@ class KernelBuilder:
                 body.append(("valu", ("<", vec_tmp1, vec_idx, vec_n_nodes)))
                 body.append(("flow", ("vselect", vec_idx, vec_tmp1, vec_idx, vec_zero)))
                 # mem[inp_indices_p + i : i + VLEN] = idx
-                body.append(("alu", ("+", tmp_addr, self.scratch["inp_indices_p"], i_const)))
-                body.append(("store", ("vstore", tmp_addr, vec_idx)))
+                body.append(
+                    {
+                        "alu": [
+                            ("+", tmp_addr_idx, self.scratch["inp_indices_p"], i_const),
+                            ("+", tmp_addr_val, self.scratch["inp_values_p"], i_const),
+                        ]
+                    }
+                )
+                body.append(
+                    {
+                        "store": [
+                            ("vstore", tmp_addr_idx, vec_idx),
+                            ("vstore", tmp_addr_val, vec_val),
+                        ]
+                    }
+                )
                 # mem[inp_values_p + i : i + VLEN] = val
-                body.append(("alu", ("+", tmp_addr, self.scratch["inp_values_p"], i_const)))
-                body.append(("store", ("vstore", tmp_addr, vec_val)))
 
         body_instrs = self.build(body)
         self.instrs.extend(body_instrs)
