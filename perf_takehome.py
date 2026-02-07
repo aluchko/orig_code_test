@@ -311,12 +311,12 @@ class KernelBuilder:
                     )
                     body.append(("valu", (op2, vec_val, vec_tmp1, vec_tmp2)))
                 # idx = 2*idx + (1 if val % 2 == 0 else 2)
-                body.append(("valu", ("%", vec_tmp1, vec_val, vec_two)))
+                body.append(("valu", ("&", vec_tmp1, vec_val, vec_one)))
                 body.append(("valu", ("==", vec_tmp1, vec_tmp1, vec_zero)))
                 body.append(
                     {
                         "flow": [("vselect", vec_tmp3, vec_tmp1, vec_one, vec_two)],
-                        "valu": [("*", vec_idx, vec_idx, vec_two)],
+                        "valu": [("<<", vec_idx, vec_idx, vec_one)],
                     }
                 )
                 body.append(("valu", ("+", vec_idx, vec_idx, vec_tmp3)))
