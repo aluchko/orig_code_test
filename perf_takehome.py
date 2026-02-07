@@ -50,15 +50,89 @@ class KernelBuilder:
     def debug_info(self):
         return DebugInfo(scratch_map=self.scratch_debug)
 
-    def build(self, slots: list[tuple[Engine, tuple] | dict[str, list[tuple]]], vliw: bool = False):
+    def build(
+        self,
+        slots: list[tuple[Engine, tuple] | dict[str, list[tuple]]],
+        vliw: bool = False,
+    ):
         # Simple slot packing that just uses one slot per instruction bundle
         instrs = []
+        if not vliw:
+            for slot_entry in slots:
+                if isinstance(slot_entry, dict):
+                    instrs.append(slot_entry)
+                    continue
+                engine, slot = slot_entry
+                instrs.append({engine: [slot]})
+            return instrs
+
+        def slot_reads_writes(engine: str, slot: tuple) -> tuple[set[int], set[int]]:
+            op = slot[0]
+            if engine == "debug":
+                return set(), set()
+            if engine == "flow":
+                if op == "pause":
+                    return set(), set()
+                # vselect dest, cond, a, b
+                return set(slot[2:]), {slot[1]}
+            if engine == "store":
+                # store/vstore addr, val
+                return set(slot[1:]), set()
+            if engine == "load":
+                # const dest, imm | load/vload dest, addr | load_offset dest, base, offset
+                if op == "const":
+                    return set(), {slot[1]}
+                if op == "load_offset":
+                    return {slot[2]}, {slot[1]}
+                return {slot[2]}, {slot[1]}
+            # alu/valu: op dest, src1, src2
+            return set(slot[2:]), {slot[1]}
+
+        def can_pack(
+            bundle_reads: set[int],
+            bundle_writes: set[int],
+            reads: set[int],
+            writes: set[int],
+        ) -> bool:
+            if reads & bundle_writes:
+                return False
+            if writes & (bundle_reads | bundle_writes):
+                return False
+            return True
+
+        current = {}
+        bundle_reads: set[int] = set()
+        bundle_writes: set[int] = set()
+
+        def flush():
+            nonlocal current, bundle_reads, bundle_writes
+            if current:
+                instrs.append(current)
+                current = {}
+                bundle_reads = set()
+                bundle_writes = set()
+
         for slot_entry in slots:
             if isinstance(slot_entry, dict):
+                flush()
                 instrs.append(slot_entry)
                 continue
+
             engine, slot = slot_entry
-            instrs.append({engine: [slot]})
+            reads, writes = slot_reads_writes(engine, slot)
+            engine_slots = current.get(engine, [])
+            if (
+                len(engine_slots) >= SLOT_LIMITS[engine]
+                or not can_pack(bundle_reads, bundle_writes, reads, writes)
+            ):
+                flush()
+                engine_slots = current.get(engine, [])
+            engine_slots.append(slot)
+            current[engine] = engine_slots
+            bundle_reads |= reads
+            bundle_writes |= writes
+
+        flush()
         return instrs
 
     def add(self, engine, slot):
@@ -268,7 +342,7 @@ class KernelBuilder:
                 )
                 # mem[inp_values_p + i : i + VLEN] = val
 
-        body_instrs = self.build(body)
+        body_instrs = self.build(body, vliw=True)
         self.instrs.extend(body_instrs)
         # Required to match with the yield in reference_kernel2
         self.instrs.append({"flow": [("pause",)]})
