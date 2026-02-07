@@ -199,11 +199,11 @@ class KernelBuilder:
                                 vec_val,
                                 [(round, batch_base + vi, "val") for vi in range(VLEN)],
                             ),
-                        ]
+                        ],
+                        "valu": [("+", vec_addr, vec_forest_base, vec_idx)],
                     }
                 )
                 # node_val = mem[forest_values_p + idx]
-                body.append(("valu", ("+", vec_addr, vec_forest_base, vec_idx))) # vec_addr = vec_forest_base + vec_idx
                 for vi in range(0, VLEN, 2):
                     body.append(
                         {
@@ -214,17 +214,18 @@ class KernelBuilder:
                         }
                     )
                 body.append(
-                    (
-                        "debug",
-                        (
-                            "vcompare",
-                            vec_node_val,
-                            [(round, batch_base + vi, "node_val") for vi in range(VLEN)],
-                        ),
-                    )
+                    {
+                        "debug": [
+                            (
+                                "vcompare",
+                                vec_node_val,
+                                [(round, batch_base + vi, "node_val") for vi in range(VLEN)],
+                            )
+                        ],
+                        "valu": [("^", vec_val, vec_val, vec_node_val)],
+                    }
                 )
                 # val = myhash(val ^ node_val), this is so we know which branch of the tree to take.
-                body.append(("valu", ("^", vec_val, vec_val, vec_node_val)))
                 for op1, val1, op2, op3, val3 in HASH_STAGES:
                     body.append(
                         {
