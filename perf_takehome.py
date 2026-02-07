@@ -246,17 +246,17 @@ class KernelBuilder:
                 )
                 body.append(("valu", ("+", vec_idx, vec_idx, vec_tmp3)))
                 # idx = 0 if idx >= n_nodes else idx
-                body.append(("valu", ("<", vec_tmp1, vec_idx, vec_n_nodes)))
-                body.append(("flow", ("vselect", vec_idx, vec_tmp1, vec_idx, vec_zero)))
-                # mem[inp_indices_p + i : i + VLEN] = idx
                 body.append(
                     {
                         "alu": [
                             ("+", tmp_addr_idx, self.scratch["inp_indices_p"], i_const),
                             ("+", tmp_addr_val, self.scratch["inp_values_p"], i_const),
-                        ]
+                        ],
+                        "valu": [("<", vec_tmp1, vec_idx, vec_n_nodes)],
                     }
                 )
+                body.append(("flow", ("vselect", vec_idx, vec_tmp1, vec_idx, vec_zero)))
+                # mem[inp_indices_p + i : i + VLEN] = idx
                 body.append(
                     {
                         "store": [
